@@ -109,11 +109,32 @@ end
 -- 3. WARP (transport murni, TIDAK ada safety check di dalam)
 -- ============================================================
 
+local LAST_WARP_TIME = 0
+
 local function do_warp(world_name, door_id)
     world_name = string.upper(world_name)
     local target = world_name
     if door_id and door_id ~= "" then
         target = world_name .. "|" .. string.upper(door_id)
+    end
+
+    -- Cek jika sudah berada di world tujuan, lewati jeda cooldown
+    local lp_check = GetLocal()
+    if lp_check and string.upper(lp_check.world) == world_name then
+        local tiles = GetTiles()
+        if tiles and #tiles > 0 then
+            return true
+        end
+    end
+
+    -- Terapkan batas waktu tunggu (30 detik) sebelum melakukan warp berikutnya
+    local current_time = GetTimeMS()
+    local elapsed = current_time - LAST_WARP_TIME
+    local cooldown_ms = 30000 -- 30 detik
+    if elapsed < cooldown_ms then
+        local wait_time = cooldown_ms - elapsed
+        info_log(string.format("[WARP-COOLDOWN] Menunggu %.1f detik sebelum warp berikutnya...", wait_time / 1000))
+        Sleep(wait_time)
     end
 
     for attempt = 1, 5 do
@@ -122,6 +143,7 @@ local function do_warp(world_name, door_id)
             local tiles = GetTiles()
             if tiles and #tiles > 0 then
                 Sleep(2000)
+                LAST_WARP_TIME = GetTimeMS()
                 return true
             end
         end
@@ -136,12 +158,14 @@ local function do_warp(world_name, door_id)
                 local t = GetTiles()
                 if t and #t > 0 then
                     Sleep(1500)
+                    LAST_WARP_TIME = GetTimeMS()
                     return true
                 end
             end
         end
     end
     info_log("Gagal warp ke: " .. target)
+    LAST_WARP_TIME = GetTimeMS()
     return false
 end
 
@@ -256,22 +280,23 @@ local function check_inventory_for(item_id)
     end
 end
 
-local function drop_all_seeds()
+local function drop_all_seeds(force)
     local seed_ids = {3, 15, 11, 5}
-    local needs_drop = false
+    local total_seeds = 0
     for _, id in ipairs(seed_ids) do
-        if GetItemCount(id) >= CONFIG.seed_drop_threshold then
-            needs_drop = true
-            break
-        end
+        total_seeds = total_seeds + GetItemCount(id)
     end
-    if not needs_drop then return end
+
+    -- Hanya warp ke storage jika dipaksa (di akhir run) atau jumlah total seed di tas sudah mencapai threshold (180)
+    if not force and total_seeds < CONFIG.seed_drop_threshold then 
+        return 
+    end
 
     local lp = GetLocal()
     if not lp then return end
     local return_world = string.upper(lp.world)
 
-    info_log("Tas penuh seed! Drop ke seed storage...")
+    info_log(string.format("Menuju seed storage (Total seed di tas: %d)...", total_seeds))
     EditToggle("autocollect", false) -- Matikan autocollect agar seed tidak terambil lagi
     Sleep(500)
 
@@ -286,9 +311,11 @@ local function drop_all_seeds()
         return 
     end
 
+    -- Menentukan titik koordinat drop
     local drop_x = me.tile_x + 3
     if drop_x > 98 then drop_x = me.tile_x - 3 end
-    walk_to(drop_x, me.tile_y)
+    local drop_y = me.tile_y
+    walk_to(drop_x, drop_y)
     Sleep(300)
 
     for _, id in ipairs(seed_ids) do
@@ -299,9 +326,10 @@ local function drop_all_seeds()
             Sleep(500)
             SendPacket(2, "action|dialog_return\ndialog_name|drop_item\nitemID|" .. tostring(id) .. "|\ncount|" .. tostring(count))
             Sleep(800)
-            drop_x = drop_x + 1
-            if drop_x > 98 then drop_x = me.tile_x - 3 end
-            walk_to(drop_x, me.tile_y)
+            
+            -- Pindah secara vertikal ke atas (step 2 tile) agar seed bertumpuk vertikal dan tidak tercollect kembali saat karakter bergerak
+            drop_y = drop_y - 2
+            walk_to(drop_x, drop_y)
             Sleep(200)
         end
     end
@@ -448,7 +476,7 @@ local function main_build_process()
         end
     end
 
-    drop_all_seeds()
+    drop_all_seeds(false)
 
     for index, y in ipairs(PLATFORM_Y_LEVELS) do
         info_log(string.format("Baris y=%d (%d/%d)...", y, index, #PLATFORM_Y_LEVELS))
@@ -469,7 +497,7 @@ local function main_build_process()
 
         build_edge((step_x == 1) and 99 or 0, y)
 
-        drop_all_seeds()
+        drop_all_seeds(false)
         check_resting(index)
         Sleep(500)
     end
@@ -516,6 +544,7 @@ local function main_build_process()
         end
     end
 
+    drop_all_seeds(true) -- Drop sisa seed di tas ke storage sebelum selesai
     info_log("Selesai! Keluar world...")
     do_warp("EXIT", "")
     MessageBox("Dirt Farm Selesai", "Pembangunan Dirt Farm selesai sempurna!")
