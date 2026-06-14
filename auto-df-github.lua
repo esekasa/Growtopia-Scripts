@@ -31,9 +31,6 @@ local function load_github_script()
             log("--> [LOADER] Detail: " .. tostring(run_err))
             MessageBox("Error Script", "Gagal menjalankan script.\nDetail: " .. tostring(run_err))
         end
-        
-        -- Hapus file sementara setelah dimuat ke memory
-        pcall(os.remove, TEMP_FILE_PATH)
     else
         log("--> [LOADER] ERROR: Gagal mengunduh script dari GitHub Pages!")
         MessageBox("Loader Gagal", "Gagal mengunduh script. Periksa koneksi internet Anda.")
