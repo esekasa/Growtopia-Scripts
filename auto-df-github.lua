@@ -40,4 +40,5 @@ local function load_github_script()
     end
 end
 
-load_github_script()
+-- Menjalankan loader di dalam thread agar os.execute tidak membekukan main loop game (mencegah force close)
+RunThread(load_github_script)
