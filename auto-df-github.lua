@@ -11,11 +11,8 @@ local TEMP_FILE_PATH = "d:\\Games\\Growtopia\\Script\\auto-df-temp.lua"
 local function load_github_script()
     log("--> [LOADER] Mengunduh versi terbaru dari GitHub Pages...")
     
-    -- Menambahkan cache buster (?t=random) untuk memaksa bypass cache
-    local cache_buster = "?t=" .. tostring(math.random(100000, 999999))
-    local final_url = GITHUB_PAGES_URL .. cache_buster
-    
-    local command = string.format('curl -s -k -L "%s" > "%s"', final_url, TEMP_FILE_PATH)
+    -- Menggunakan header Cache-Control pada curl untuk memaksa bypass cache secara aman
+    local command = string.format('curl -s -k -L -H "Cache-Control: no-cache" "%s" > "%s"', GITHUB_PAGES_URL, TEMP_FILE_PATH)
     local success, exit_code = pcall(os.execute, command)
     
     if success and (exit_code == 0 or exit_code == true) then
@@ -37,5 +34,7 @@ local function load_github_script()
     end
 end
 
--- Menjalankan loader di dalam thread agar os.execute tidak membekukan main loop game (mencegah force close)
-RunThread(load_github_script)
+-- Menjalankan loader di dalam anonymous function untuk mencegah crash pada binder thread Growpai
+RunThread(function()
+    load_github_script()
+end)
